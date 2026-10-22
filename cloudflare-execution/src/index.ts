@@ -133,15 +133,17 @@ function outputText(output: Output): string {
 export class RateLimiter extends DurableObject<Env> {
   async check(): Promise<boolean> {
     const now = Date.now();
-    const saved = (await this.ctx.storage.get<number[]>("timestamps")) ?? [];
-    const recent = saved.filter((timestamp) => timestamp > now - RATE_WINDOW_MS);
-    if (recent.length >= RATE_LIMIT) {
-      await this.ctx.storage.put("timestamps", recent);
-      return false;
-    }
-    recent.push(now);
-    await this.ctx.storage.put("timestamps", recent);
-    return true;
+    return this.ctx.storage.transaction(async (transaction) => {
+      const saved = (await transaction.get<number[]>("timestamps")) ?? [];
+      const recent = saved.filter((timestamp) => timestamp > now - RATE_WINDOW_MS);
+      if (recent.length >= RATE_LIMIT) {
+        await transaction.put("timestamps", recent);
+        return false;
+      }
+      recent.push(now);
+      await transaction.put("timestamps", recent);
+      return true;
+    });
   }
 }
 
