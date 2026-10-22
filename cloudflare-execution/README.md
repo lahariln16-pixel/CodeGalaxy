@@ -1,13 +1,13 @@
 # CodeGalaxy C execution on Cloudflare
 
-This folder contains a Cloudflare Worker API and a disposable Cloudflare Sandbox container with GCC. It implements the same `POST /api/execute` response contract used by `src/services/executeC.ts`.
+This folder contains a Cloudflare Worker API and a disposable Cloudflare Container with GCC. It implements the same `POST /api/execute` response contract used by `src/services/executeC.ts`.
 
 ## Requirements
 
-- A Cloudflare account with the **Workers Paid** plan enabled. Cloudflare Sandboxes/Containers are not available on the Free plan.
+- A Cloudflare account with the **Workers Paid** plan enabled. Cloudflare Containers/Sandboxes are not available on the Free plan.
 - Node.js 20+ and npm.
-- Docker running locally. Wrangler builds the sandbox image during local development and deployment.
-- Access to authorize Wrangler against your Cloudflare account in a browser.
+- Docker running locally. Wrangler builds the container image during local development and deployment.
+- Browser access to authorize Wrangler against your Cloudflare account.
 
 ## Deploy
 
@@ -40,17 +40,16 @@ Configure the frontend build environment variable to point at the Worker:
 VITE_EXECUTION_API_URL=https://YOUR-WORKER-URL/api/execute
 ```
 
-For a Cloudflare Pages build, add that variable in the Pages project's Settings → Environment variables, then redeploy the frontend. If the frontend itself is a Worker, set the same variable in that project's build configuration.
+For a Cloudflare Pages build, add that variable in the Pages project's Settings → Environment variables, then redeploy the frontend.
 
-## Security and operational checklist
+## Security and operations
 
-- This Worker creates a unique sandbox ID for every execution and destroys the container in a `finally` block. Do not change this to a shared sandbox ID: arbitrary C programs can create processes and modify files.
-- The sandbox image is built from Cloudflare's Sandbox SDK preview line and installs GCC. Keep the `@cloudflare/sandbox@next` package and `cloudflare/sandbox:next` image on the same release line.
-- The API caps source at 20,000 characters, stdin at 8,000 characters, compiler/runtime time, and buffered output. It only exposes C compilation/execution and has a health endpoint.
-- Before public launch, add a Cloudflare rate-limiting rule for `POST /api/execute` and configure abuse monitoring in the Cloudflare dashboard. Worker-level in-memory counters are not a reliable distributed rate limiter.
-- Review current Cloudflare Containers limits and pricing before public traffic. Each request creates and destroys a container; do not launch publicly until concurrency and cost limits are set.
-- C programs are untrusted. Do not add credentials, persistent user data, or other secrets to the container image.
-- `@cloudflare/sandbox@next` is a preview dependency. Verify the SDK/image compatibility and run compile, stdin, compiler-error, timeout, and concurrent-request integration tests before production use.
+- Each execution gets a unique Durable Object and container. The Worker destroys the container after compilation/execution, so files and processes do not persist between runs.
+- The container starts with `enableInternet: false`; user C programs cannot make outbound internet connections.
+- A Durable Object-backed rate limiter allows at most 20 requests per minute per Cloudflare client IP. Source, stdin, request body, output size, compilation time, and run time are capped.
+- The container runs arbitrary untrusted C. Do not add credentials, persistent user data, or other secrets to its image.
+- Review current Cloudflare Containers limits and pricing before public traffic. The container deployment and end-to-end behavior still need to be tested in your Cloudflare account.
+- This worker uses Cloudflare Sandbox SDK 1.0.0 and the matching container image. Keep them on the same release line.
 
 ## Local development
 
