@@ -313,7 +313,7 @@ export default function App() {
                   aria-label="C source code editor"
                   spellCheck={false}
                   value={code}
-                  onChange={e => setCode(e.target.value)}
+                  onChange={e => { setCode(e.target.value); setExecution(null); }}
                   className="code-input"
                   wrap="off"
                 />
@@ -379,7 +379,7 @@ export default function App() {
               </> : current?.output.length ? current.output.map((line, i) => <pre key={i}>{line}</pre>) : <p className="terminal-placeholder">Run trace for a learning trace, or Run C to compile and execute the program.</p>}
               {error && !execution && <div className="error-message"><X size={14}/><span>{error}</span></div>}
             </div>
-            <div className="terminal-footer"><span><span className="green-dot"/> Process {execution ? (execution.error ? "error" : execution.run?.code === 0 ? "exited" : execution.run ? "finished" : "compiled") : current?.finished ? "exited" : "ready"}</span><span>{execution?.run?.code != null ? `exit code ${execution.run.code}` : execution?.error ? "execution failed" : current?.finished ? "exit code 0" : "waiting for run"}</span></div>
+            <div className="terminal-footer"><span><span className="green-dot"/> Process {execution ? (execution.error ? "error" : execution.compile?.code != null && execution.compile.code !== 0 ? "compile failed" : execution.run?.code === 0 ? "exited" : execution.run ? "finished" : "compiled") : current?.finished ? "exited" : "ready"}</span><span>{execution?.run?.code != null ? `exit code ${execution.run.code}` : execution?.error ? "execution failed" : execution?.compile?.code != null && execution.compile.code !== 0 ? "compiler error" : current?.finished ? "exit code 0" : "waiting for run"}</span></div>
           </div>
         </section>
 
