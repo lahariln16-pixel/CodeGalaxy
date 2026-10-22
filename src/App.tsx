@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Activity, ArrowDown, ArrowLeft, ArrowRight, Braces, Check, ChevronDown,
-  CircleHelp, Code2, Command, Copy, Cpu, FileCode2, Gauge, GitBranch,
-  Layers3, Play, RotateCcw, Search, Settings2, SkipBack, SkipForward,
-  Sparkles, Square, Terminal, WandSparkles, X
+  Activity, ArrowRight, Braces, ChevronDown, CircleHelp, Code2, FileCode2,
+  Gauge, GitBranch, Layers3, Play, RotateCcw, Settings2, SkipBack,
+  SkipForward, Sparkles, Square, Terminal, WandSparkles, X
 } from "lucide-react";
 
 const starterCode = `#include <stdio.h>
@@ -203,8 +202,6 @@ function buildTrace(source: string): BuildResult {
   }
   return { steps };
 }
-
-const starterLines = starterCode.split("\n");
 
 export default function App() {
   const [code, setCode] = useState(starterCode);
