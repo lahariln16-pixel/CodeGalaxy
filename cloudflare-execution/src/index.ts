@@ -1,17 +1,22 @@
-import { getSandbox, type Sandbox as SandboxType } from "@cloudflare/sandbox";
-
-export { Sandbox } from "@cloudflare/sandbox";
+import { Files } from "@cloudflare/sandbox";
+import { DurableObject } from "cloudflare:workers";
 
 interface Env {
-  Sandbox: DurableObjectNamespace<SandboxType>;
+  Sandbox: DurableObjectNamespace<Sandbox>;
+  RATE_LIMITER: DurableObjectNamespace<RateLimiter>;
   FRONTEND_ORIGIN?: string;
 }
 
+type Output = { text: string; truncated: boolean };
+
 const MAX_SOURCE_CHARS = 20_000;
 const MAX_STDIN_CHARS = 8_000;
-const MAX_OUTPUT_CHARS = 20_000;
+const MAX_BODY_BYTES = 32_000;
+const MAX_OUTPUT_BYTES = 20_000;
 const COMPILE_TIMEOUT_MS = 10_000;
-const RUN_TIMEOUT_MS = 3_500;
+const RUN_TIMEOUT_MS = 3_000;
+const RATE_WINDOW_MS = 60_000;
+const RATE_LIMIT = 20;
 
 function json(data: unknown, status = 200, headers: HeadersInit = {}): Response {
   return Response.json(data, {
@@ -27,7 +32,7 @@ function corsHeaders(request: Request, env: Env): HeadersInit {
     .map((item) => item.trim())
     .filter(Boolean);
   if (!origin) return {};
-  if (!allowed.includes(origin)) throw new Error("Origin is not allowed by CodeGalaxy.");
+  if (!allowed.includes(origin)) throw new Error("Origin is not allowed.");
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -36,8 +41,218 @@ function corsHeaders(request: Request, env: Env): HeadersInit {
   };
 }
 
-function clip(value: unknown): string {
-  return typeof value === "string" ? value.slice(0, MAX_OUTPUT_CHARS) : "";
+async function readBodyLimited(request: Request, maxBytes: number): Promise<string> {
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        throw new Error("BODY_TOO_LARGE");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
+async function hashIp(ip: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(ip));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function readStreamLimited(
+  stream: ReadableStream<Uint8Array> | null,
+  maxBytes: number,
+  controller: AbortController,
+): Promise<Output> {
+  if (!stream) return { text: "", truncated: false };
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  let truncated = false;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const remaining = maxBytes - total;
+      if (value.byteLength > remaining) {
+        if (remaining > 0) chunks.push(value.slice(0, remaining));
+        total += Math.max(remaining, 0);
+        truncated = true;
+        controller.abort();
+        await reader.cancel();
+        break;
+      }
+      chunks.push(value);
+      total += value.byteLength;
+    }
+  } catch {
+    // Aborting the process closes its output streams; keep the bounded output collected so far.
+  } finally {
+    try { reader.releaseLock(); } catch { /* stream already closed */ }
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { text: new TextDecoder().decode(bytes), truncated };
+}
+
+async function collectProcess(
+  process: { stdout: ReadableStream<Uint8Array> | null; stderr: ReadableStream<Uint8Array> | null; exitCode: Promise<number> },
+  controller: AbortController,
+): Promise<{ stdout: Output; stderr: Output; code: number }> {
+  const [stdout, stderr, code] = await Promise.all([
+    readStreamLimited(process.stdout, MAX_OUTPUT_BYTES, controller),
+    readStreamLimited(process.stderr, MAX_OUTPUT_BYTES, controller),
+    process.exitCode,
+  ]);
+  return { stdout, stderr, code };
+}
+
+function outputText(output: Output): string {
+  return output.text + (output.truncated ? "\n[Output truncated at 20,000 bytes.]" : "");
+}
+
+export class RateLimiter extends DurableObject<Env> {
+  async check(): Promise<boolean> {
+    const now = Date.now();
+    const saved = (await this.ctx.storage.get<number[]>("timestamps")) ?? [];
+    const recent = saved.filter((timestamp) => timestamp > now - RATE_WINDOW_MS);
+    if (recent.length >= RATE_LIMIT) {
+      await this.ctx.storage.put("timestamps", recent);
+      return false;
+    }
+    recent.push(now);
+    await this.ctx.storage.put("timestamps", recent);
+    return true;
+  }
+}
+
+export class Sandbox extends DurableObject<Env> {
+  async execute(code: string, stdin: string): Promise<{
+    language: string;
+    version: string;
+    compile: { stdout: string; stderr: string; code: number | null } | null;
+    run: { stdout: string; stderr: string; code: number | null; signal: string | null } | null;
+  }> {
+    const container = this.ctx.container;
+    if (!container) throw new Error("Container binding is not configured.");
+
+    try {
+      if (!container.running) {
+        container.start({
+          image: container.images.base,
+          entrypoint: ["sleep", "infinity"],
+          instance: "lite",
+          enableInternet: false,
+        });
+      }
+
+      const files = new Files(container);
+      await files.writeFile("/tmp/main.c", code);
+
+      const compileController = new AbortController();
+      let compileTimedOut = false;
+      const compileTimer = setTimeout(() => {
+        compileTimedOut = true;
+        compileController.abort();
+      }, COMPILE_TIMEOUT_MS);
+
+      let compiled: { stdout: Output; stderr: Output; code: number };
+      try {
+        const compiler = await container.exec([
+          "/usr/bin/gcc", "-std=c17", "-O2", "-pipe",
+          "-o", "/tmp/codegalaxy-program", "/tmp/main.c",
+        ], { signal: compileController.signal });
+        compiled = await collectProcess(compiler, compileController);
+      } finally {
+        clearTimeout(compileTimer);
+      }
+
+      if (compileTimedOut) {
+        return {
+          language: "c",
+          version: "gcc-c17",
+          compile: { stdout: outputText(compiled!.stdout), stderr: "Compilation timed out.", code: null },
+          run: null,
+        };
+      }
+
+      if (compiled.code !== 0 || compiled.stdout.truncated || compiled.stderr.truncated) {
+        return {
+          language: "c",
+          version: "gcc-c17",
+          compile: {
+            stdout: outputText(compiled.stdout),
+            stderr: outputText(compiled.stderr),
+            code: compiled.code,
+          },
+          run: null,
+        };
+      }
+
+      const runController = new AbortController();
+      let runTimedOut = false;
+      const runTimer = setTimeout(() => {
+        runTimedOut = true;
+        runController.abort();
+      }, RUN_TIMEOUT_MS);
+
+      let runResult: { stdout: Output; stderr: Output; code: number };
+      try {
+        const process = await container.exec(["/tmp/codegalaxy-program"], {
+          stdin: "pipe",
+          signal: runController.signal,
+        });
+        if (!process.stdin) throw new Error("Program stdin pipe was not available.");
+        const writer = process.stdin.getWriter();
+        try {
+          await writer.write(new TextEncoder().encode(stdin));
+        } finally {
+          await writer.close().catch(() => undefined);
+        }
+        runResult = await collectProcess(process, runController);
+      } finally {
+        clearTimeout(runTimer);
+      }
+
+      return {
+        language: "c",
+        version: "gcc-c17",
+        compile: {
+          stdout: outputText(compiled.stdout),
+          stderr: outputText(compiled.stderr),
+          code: compiled.code,
+        },
+        run: {
+          stdout: outputText(runResult.stdout),
+          stderr: runTimedOut ? "Program exceeded the 3-second execution limit." : outputText(runResult.stderr),
+          code: runTimedOut ? null : runResult.code,
+          signal: null,
+        },
+      };
+    } finally {
+      // The DO identity remains available, but no files or processes survive this run.
+      await container.destroy("CodeGalaxy execution completed").catch(() => undefined);
+    }
+  }
 }
 
 export default {
@@ -50,9 +265,7 @@ export default {
     }
 
     const url = new URL(request.url);
-    if (request.method === "OPTIONS") {
-      return new Response(null, { status: 204, headers });
-    }
+    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers });
     if (request.method === "GET" && url.pathname === "/health") {
       return json({ ok: true, service: "codegalaxy-cloudflare-execution" }, 200, headers);
     }
@@ -61,13 +274,33 @@ export default {
     }
 
     const contentLength = Number(request.headers.get("Content-Length") || 0);
-    if (contentLength > 32_000) {
+    if (contentLength > MAX_BODY_BYTES) {
       return json({ error: "Request body is too large." }, 413, headers);
+    }
+
+    const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+    const limiterId = await hashIp(ip);
+    const limiter = env.RATE_LIMITER.getByName(limiterId);
+    if (!(await limiter.check())) {
+      return json({ error: "Too many execution requests. Please wait a minute and try again." }, 429, {
+        ...headers,
+        "Retry-After": "60",
+      });
+    }
+
+    let bodyText: string;
+    try {
+      bodyText = await readBodyLimited(request, MAX_BODY_BYTES);
+    } catch (error) {
+      if (error instanceof Error && error.message === "BODY_TOO_LARGE") {
+        return json({ error: "Request body is too large." }, 413, headers);
+      }
+      return json({ error: "Could not read the request body." }, 400, headers);
     }
 
     let body: unknown;
     try {
-      body = await request.json();
+      body = JSON.parse(bodyText);
     } catch {
       return json({ error: "Request body must be valid JSON." }, 400, headers);
     }
@@ -86,92 +319,15 @@ export default {
       return json({ error: "Program input must be text under 8,000 characters." }, 400, headers);
     }
 
-    // Each execution receives its own disposable container so user programs cannot
-    // collide with another request's files or processes.
-    const sandbox = getSandbox(env.Sandbox, `cg-${crypto.randomUUID()}`, {
-      sleepAfter: "30s",
-    });
-
     try {
-      await sandbox.writeFile("/tmp/main.c", code);
-      await sandbox.writeFile("/tmp/stdin.txt", stdin);
-
-      const compiler = await sandbox.exec([
-        "/usr/bin/gcc",
-        "-std=c17",
-        "-O2",
-        "-pipe",
-        "-o",
-        "/tmp/codegalaxy-program",
-        "/tmp/main.c",
-      ], { timeout: COMPILE_TIMEOUT_MS });
-
-      const compiled = await compiler.output({
-        encoding: "utf8",
-        timeout: COMPILE_TIMEOUT_MS + 1_000,
-        maxBytes: MAX_OUTPUT_CHARS,
-      });
-
-      if (compiled.timedOut) {
-        return json({
-          language: "c",
-          version: "gcc-c17",
-          compile: { stdout: clip(compiled.stdout), stderr: "Compilation timed out.", code: null },
-          run: null,
-        }, 200, headers);
-      }
-
-      if (compiled.exitCode !== 0) {
-        return json({
-          language: "c",
-          version: "gcc-c17",
-          compile: {
-            stdout: clip(compiled.stdout),
-            stderr: clip(compiled.stderr),
-            code: compiled.exitCode,
-          },
-          run: null,
-        }, 200, headers);
-      }
-
-      const execution = await sandbox.exec([
-        "/bin/bash",
-        "-lc",
-        "exec /usr/bin/timeout --signal=KILL 3s /tmp/codegalaxy-program < /tmp/stdin.txt",
-      ], { timeout: RUN_TIMEOUT_MS });
-
-      const run = await execution.output({
-        encoding: "utf8",
-        timeout: RUN_TIMEOUT_MS + 1_000,
-        maxBytes: MAX_OUTPUT_CHARS,
-      });
-
-      return json({
-        language: "c",
-        version: "gcc-c17",
-        compile: {
-          stdout: clip(compiled.stdout),
-          stderr: clip(compiled.stderr),
-          code: compiled.exitCode,
-        },
-        run: {
-          stdout: clip(run.stdout),
-          stderr: clip(run.stderr),
-          code: run.timedOut ? null : run.exitCode,
-          signal: run.signal == null ? null : String(run.signal),
-        },
-      }, 200, headers);
+      const sandboxId = `cg-${crypto.randomUUID()}`;
+      const sandbox = env.Sandbox.getByName(sandboxId);
+      const result = await sandbox.execute(code, stdin);
+      return json(result, 200, headers);
     } catch {
       return json({
-        error: "The isolated C sandbox could not complete this request. Try again, or check the Worker logs.",
+        error: "The isolated C sandbox could not complete this request. Check the Worker logs and try again.",
       }, 502, headers);
-    } finally {
-      // Free container resources and erase all source, input, binaries, and processes.
-      try {
-        await sandbox.destroy();
-      } catch {
-        // Preserve the execution response; Cloudflare may already have stopped the container.
-      }
     }
   },
 };
