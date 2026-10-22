@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { executeC, type CExecutionResult } from "./services/executeC";
 import {
   Activity, ArrowRight, Braces, ChevronDown, CircleHelp, Code2, FileCode2,
   Gauge, GitBranch, Layers3, Play, RotateCcw, Settings2, SkipBack,
@@ -209,6 +210,9 @@ export default function App() {
   const [trace, setTrace] = useState<Snapshot[]>(() => buildTrace(starterCode).steps);
   const [cursor, setCursor] = useState(0);
   const [error, setError] = useState("");
+  const [execution, setExecution] = useState<CExecutionResult | null>(null);
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [stdin, setStdin] = useState("");
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState("700");
   const [activeTab, setActiveTab] = useState("variables");
@@ -233,11 +237,24 @@ export default function App() {
   }, [cursor, trace.length, isPlaying]);
 
   const run = () => {
+    setExecution(null);
     const result = buildTrace(code);
     setTrace(result.steps.length ? result.steps : []);
     setCursor(0);
     setError(result.error ?? "");
     setIsPlaying(false);
+  };
+  const runC = async () => {
+    setIsExecuting(true);
+    setExecution(null);
+    try {
+      const result = await executeC(code, stdin);
+      setExecution(result);
+    } catch (err) {
+      setExecution({ error: err instanceof Error ? err.message : "Could not reach the C execution service." });
+    } finally {
+      setIsExecuting(false);
+    }
   };
   const reset = () => { setIsPlaying(false); setCursor(0); };
   const next = () => { setIsPlaying(false); setCursor(c => Math.min(c + 1, trace.length - 1)); };
@@ -271,13 +288,14 @@ export default function App() {
           <div className="heading-badge"><WandSparkles size={15} /> Made for curious minds</div>
         </section>
 
-        {showHelp && <div className="help-banner"><div><strong>How to use CodeGalaxy</strong><p>Click Run trace, then use the step controls to follow the supported C subset. This is an educational tracer, not a full C compiler.</p></div><button className="icon-button" onClick={() => setShowHelp(false)}><X size={16}/></button></div>}
+        {showHelp && <div className="help-banner"><div><strong>How to use CodeGalaxy</strong><p>Click Run trace, then use the step controls to follow the supported C subset. Run trace explores the supported learning subset. Run C compiles and executes real C through a sandbox service.</p></div><button className="icon-button" onClick={() => setShowHelp(false)}><X size={16}/></button></div>}
 
         <section className="toolbar">
           <div className="file-crumb"><span className="file-icon"><FileCode2 size={16}/></span><strong>main.c</strong><span className="crumb-divider">/</span><span className="muted">C Playground</span><ChevronDown size={14}/></div>
           <div className="toolbar-right">
             <span className="language-chip"><span className="c-badge">C</span> C language</span>
-            <button className="run-button" onClick={run}><Play size={15} fill="currentColor"/> Run trace <span className="shortcut">⌘ ↵</span></button>
+            <button className="run-button trace-button" onClick={run}><Play size={15} fill="currentColor"/> Run trace</button>
+            <button className="execute-button" onClick={runC} disabled={isExecuting}>{isExecuting ? "Running…" : "Run C"} <span>↗</span></button>
           </div>
         </section>
 
@@ -295,7 +313,7 @@ export default function App() {
                   aria-label="C source code editor"
                   spellCheck={false}
                   value={code}
-                  onChange={e => setCode(e.target.value)}
+                  onChange={e => { setCode(e.target.value); setExecution(null); }}
                   className="code-input"
                   wrap="off"
                 />
@@ -349,8 +367,19 @@ export default function App() {
           </div>
           <div className="panel output-panel">
             <div className="panel-header"><div className="panel-title"><Terminal size={16}/><span>Program output</span></div><span className="terminal-status"><span className="green-dot"/> stdout</span></div>
-            <div className="terminal-body"><div className="terminal-prompt"><span>❯</span><code>./main</code></div>{current?.output.length ? current.output.map((line, i) => <pre key={i}>{line}</pre>) : <p className="terminal-placeholder">Output will appear here when printf runs.</p>}{error && <div className="error-message"><X size={14}/><span>{error}</span></div>}</div>
-            <div className="terminal-footer"><span><span className="green-dot"/> Process {current?.finished ? "exited" : "ready"}</span><span>{current?.finished ? "exit code 0" : "waiting for trace"}</span></div>
+            <div className="stdin-row"><label htmlFor="program-stdin">PROGRAM INPUT <span>stdin</span></label><textarea id="program-stdin" value={stdin} onChange={e => setStdin(e.target.value)} rows={2} placeholder="Optional input for scanf, one value per line…" /></div>
+            <div className="terminal-body"><div className="terminal-prompt"><span>❯</span><code>{execution ? "sandbox /main" : "./main"}</code></div>
+              {execution ? <>
+                {execution.error && <div className="error-message"><X size={14}/><span>{execution.error}</span></div>}
+                {execution.compile?.stdout && <pre>{execution.compile.stdout}</pre>}
+                {execution.compile?.stderr && <pre className="compiler-error">{execution.compile.stderr}</pre>}
+                {execution.run?.stdout && <pre>{execution.run.stdout}</pre>}
+                {execution.run?.stderr && <pre className="compiler-error">{execution.run.stderr}</pre>}
+                {!execution.error && !execution.compile?.stdout && !execution.compile?.stderr && !execution.run?.stdout && !execution.run?.stderr && <p className="terminal-placeholder">Program completed with no output.</p>}
+              </> : current?.output.length ? current.output.map((line, i) => <pre key={i}>{line}</pre>) : <p className="terminal-placeholder">Run trace for a learning trace, or Run C to compile and execute the program.</p>}
+              {error && !execution && <div className="error-message"><X size={14}/><span>{error}</span></div>}
+            </div>
+            <div className="terminal-footer"><span><span className="green-dot"/> Process {execution ? (execution.error ? "error" : execution.compile?.code != null && execution.compile.code !== 0 ? "compile failed" : execution.run?.code === 0 ? "exited" : execution.run ? "finished" : "compiled") : current?.finished ? "exited" : "ready"}</span><span>{execution?.run?.code != null ? `exit code ${execution.run.code}` : execution?.error ? "execution failed" : execution?.compile?.code != null && execution.compile.code !== 0 ? "compiler error" : current?.finished ? "exit code 0" : "waiting for run"}</span></div>
           </div>
         </section>
 
