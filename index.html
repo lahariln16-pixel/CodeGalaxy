@@ -14,7 +14,7 @@
 <footer class="footer"><span>✦ Built for curious minds</span><span>Prototype · Guided examples only · No code is executed</span></footer></div><div class="toast" id="toast" role="status"></div>
 <script>
 var examples={
-loop:{file:"loop_example.c",code:["int main() {","    int i = 1;","    int total = 0;","","    for (i = 1; i <= 5; i++) {","        total = total + i;","        printf(\\"%d \\", total);","    }","","    return 0;","}"],steps:[
+loop:{file:"loop_example.c",code:["int main() {","    int i = 1;","    int total = 0;","","    for (i = 1; i <= 5; i++) {","        total = total + i;","        printf(\"%d \", total);","    }","","    return 0;","}"],steps:[
 {line:1,title:"Create the counter",desc:"The variable i is initialized to 1. It will track the current loop iteration.",vars:[["i","1","int"],["total","—","int"]],array:[],stack:["main()"],out:""},
 {line:2,title:"Initialize the total",desc:"total starts at 0. Each loop pass will add the current value of i to this variable.",vars:[["i","1","int"],["total","0","int"]],array:[],stack:["main()"],out:""},
 {line:4,title:"Check the loop condition",desc:"The condition 1 <= 5 is true, so execution enters the loop body.",vars:[["i","1","int"],["total","0","int"]],array:[],stack:["main()","for-loop · iteration 1"],out:""},
@@ -22,7 +22,7 @@ loop:{file:"loop_example.c",code:["int main() {","    int i = 1;","    int total
 {line:6,title:"Print the current total",desc:"printf writes the current value of total to output. The program prints 1.",vars:[["i","1","int"],["total","1","int"]],array:[],stack:["main()","for-loop · iteration 1"],out:"1 "},
 {line:4,title:"Increment and repeat",desc:"i becomes 2. Since 2 <= 5 is true, the loop runs again. The full loop repeats until i becomes 6.",vars:[["i","2","int"],["total","1","int"]],array:[],stack:["main()","for-loop · iteration 2"],out:"1 "},
 {line:9,title:"Finish the program",desc:"The guided trace ends here. After five iterations, total reaches 15 and the output is 1 3 6 10 15.",vars:[["i","6","int"],["total","15","int"]],array:[],stack:["main()"],out:"1 3 6 10 15 "}]},
-array:{file:"array_example.c",code:["int main() {","    int values[4] = {3, 6, 9, 12};","    int i;","","    for (i = 0; i < 4; i++) {","        printf(\\"%d \\", values[i]);","    }","    return 0;","}"],steps:[
+array:{file:"array_example.c",code:["int main() {","    int values[4] = {3, 6, 9, 12};","    int i;","","    for (i = 0; i < 4; i++) {","        printf(\"%d \", values[i]);","    }","    return 0;","}"],steps:[
 {line:1,title:"Create the array",desc:"Four integers are stored in array positions. C arrays start counting at index 0.",vars:[["i","—","int"],["length","4","int"]],array:[3,6,9,12],active:0,stack:["main()"],out:""},
 {line:2,title:"Prepare the index",desc:"The loop index i starts at 0, pointing to the first element: values[0] is 3.",vars:[["i","0","int"],["values[i]","3","int"]],array:[3,6,9,12],active:0,stack:["main()","for-loop · iteration 1"],out:""},
 {line:4,title:"Check the boundary",desc:"0 < 4 is true. The index is inside the array, so the loop body can run.",vars:[["i","0","int"],["values[i]","3","int"]],array:[3,6,9,12],active:0,stack:["main()","for-loop · iteration 1"],out:""},
@@ -30,7 +30,7 @@ array:{file:"array_example.c",code:["int main() {","    int values[4] = {3, 6, 9
 {line:4,title:"Move to the next index",desc:"The increment changes i from 0 to 1. The highlighted memory cell moves to the next element.",vars:[["i","1","int"],["values[i]","6","int"]],array:[3,6,9,12],active:1,stack:["main()","for-loop · iteration 2"],out:"3 "},
 {line:5,title:"Read values[1]",desc:"The second element is 6. Each index identifies a different position in the same array.",vars:[["i","1","int"],["values[i]","6","int"]],array:[3,6,9,12],active:1,stack:["main()","for-loop · iteration 2"],out:"3 6 "},
 {line:7,title:"Traversal complete",desc:"The loop visits indices 0, 1, 2, and 3. When i becomes 4, the condition is false and the loop stops.",vars:[["i","4","int"],["length","4","int"]],array:[3,6,9,12],active:-1,stack:["main()"],out:"3 6 9 12 "}]},
-function:{file:"function_example.c",code:["int square(int n) {","    return n * n;","}","","int main() {","    int answer = square(4);","    printf(\\"%d\\", answer);","    return 0;","}"],steps:[
+function:{file:"function_example.c",code:["int square(int n) {","    return n * n;","}","","int main() {","    int answer = square(4);","    printf(\"%d\", answer);","    return 0;","}"],steps:[
 {line:4,title:"Enter main()",desc:"Program execution starts in main. The answer variable has not been assigned yet.",vars:[["answer","—","int"]],array:[],stack:["main()"],out:""},
 {line:5,title:"Call square(4)",desc:"The program calls square and passes 4 as its argument. A new function frame is placed on the call stack.",vars:[["answer","pending","int"],["n","4","parameter"]],array:[],stack:["main()","square(n = 4)"],out:""},
 {line:0,title:"Enter square()",desc:"Inside square, the parameter n contains the argument value 4. Parameters belong to this function call.",vars:[["n","4","parameter"],["answer","pending","int"]],array:[],stack:["main()","square(n = 4)"],out:""},
