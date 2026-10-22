@@ -212,6 +212,7 @@ export default function App() {
   const [error, setError] = useState("");
   const [execution, setExecution] = useState<CExecutionResult | null>(null);
   const [isExecuting, setIsExecuting] = useState(false);
+  const [stdin, setStdin] = useState("");
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState("700");
   const [activeTab, setActiveTab] = useState("variables");
@@ -247,7 +248,7 @@ export default function App() {
     setIsExecuting(true);
     setExecution(null);
     try {
-      const result = await executeC(code);
+      const result = await executeC(code, stdin);
       setExecution(result);
     } catch (err) {
       setExecution({ error: err instanceof Error ? err.message : "Could not reach the C execution service." });
@@ -366,6 +367,7 @@ export default function App() {
           </div>
           <div className="panel output-panel">
             <div className="panel-header"><div className="panel-title"><Terminal size={16}/><span>Program output</span></div><span className="terminal-status"><span className="green-dot"/> stdout</span></div>
+            <div className="stdin-row"><label htmlFor="program-stdin">PROGRAM INPUT <span>stdin</span></label><textarea id="program-stdin" value={stdin} onChange={e => setStdin(e.target.value)} rows={2} placeholder="Optional input for scanf, one value per line…" /></div>
             <div className="terminal-body"><div className="terminal-prompt"><span>❯</span><code>{execution ? "sandbox /main" : "./main"}</code></div>
               {execution ? <>
                 {execution.error && <div className="error-message"><X size={14}/><span>{execution.error}</span></div>}
