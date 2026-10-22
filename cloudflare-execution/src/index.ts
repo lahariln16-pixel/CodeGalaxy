@@ -226,7 +226,9 @@ export class Sandbox extends DurableObject<Env> {
         if (!process.stdin) throw new Error("Program stdin pipe was not available.");
         const writer = process.stdin.getWriter();
         try {
-          await writer.write(new TextEncoder().encode(stdin));
+          if (stdin.length > 0) await writer.write(new TextEncoder().encode(stdin));
+        } catch {
+          // A program may exit without reading all supplied input.
         } finally {
           await writer.close().catch(() => undefined);
         }
