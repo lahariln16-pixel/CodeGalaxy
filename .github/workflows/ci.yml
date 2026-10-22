@@ -22,3 +22,18 @@ jobs:
         run: npm install --prefix server
       - name: Check execution API syntax
         run: node --check server/index.js
+
+  cloudflare-worker:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloudflare-execution
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install Cloudflare Worker dependencies
+        run: npm install
+      - name: Type-check Cloudflare Worker
+        run: npm run typecheck

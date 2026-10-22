@@ -36,7 +36,7 @@ npm run build
 npm run preview
 ```
 
-## Enable real C execution
+## Enable real C execution locally (Piston)
 
 The browser calls a small API service, which forwards requests to a **self-hosted Piston sandbox**. Do not point this API at an unsandboxed compiler or execute submitted source directly on the API host.
 
@@ -54,6 +54,12 @@ The browser calls a small API service, which forwards requests to a **self-hoste
 4. Start the frontend with `npm run dev`. The API health check is available at `http://localhost:8787/health`.
 
 For deployment, set `PISTON_API_URL` to your private Piston service URL and `FRONTEND_ORIGIN` to the exact frontend origin. Keep the sandbox private to the API network; never expose its Docker host or execution worker directly to the public internet. The API limits source to 20,000 characters, input to 8,000 characters, and requests to 20 per minute per IP. Piston applies the compile/run resource limits in the request as well. Tune limits to match your deployment capacity.
+
+## Deploy C execution on Cloudflare
+
+A Cloudflare Worker + disposable Cloudflare Sandbox container implementation is available in [cloudflare-execution/README.md](cloudflare-execution/README.md). It uses Cloudflare Containers with GCC rather than a separately hosted Piston service.
+
+Cloudflare Sandboxes require the Workers Paid plan. Deployment also requires Node.js 20+, Docker running locally, and authorizing Wrangler in your browser. Before public launch, configure the exact frontend origin and a Cloudflare rate-limiting rule for `POST /api/execute`. The integration uses the Cloudflare Sandbox SDK preview, so test the complete flow in your own account before production use.
 
 ## Roadmap
 
