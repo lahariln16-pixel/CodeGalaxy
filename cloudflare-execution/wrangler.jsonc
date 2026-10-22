@@ -1,5 +1,5 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
+  "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "codegalaxy-c-execution",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-22",
@@ -8,7 +8,8 @@
     {
       "class_name": "Sandbox",
       "image": "./Dockerfile",
-      "max_instances": 10
+      "max_instances": 10,
+      "scheduling_policy": "durable_object"
     }
   ],
   "durable_objects": {
@@ -16,16 +17,27 @@
       {
         "class_name": "Sandbox",
         "name": "Sandbox"
+      },
+      {
+        "class_name": "RateLimiter",
+        "name": "RATE_LIMITER"
       }
     ]
   },
-  "migrations": [
-    {
-      "new_sqlite_classes": ["Sandbox"],
-      "tag": "v1"
+  "exports": {
+    "Sandbox": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    },
+    "RateLimiter": {
+      "type": "durable-object",
+      "storage": "sqlite"
     }
-  ],
+  },
   "vars": {
     "FRONTEND_ORIGIN": "http://localhost:5173"
+  },
+  "observability": {
+    "enabled": true
   }
 }
