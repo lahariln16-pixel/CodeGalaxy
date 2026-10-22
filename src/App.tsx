@@ -129,6 +129,7 @@ function buildTrace(source: string): BuildResult {
     while (pc < lines.length && safety++ < 500) {
       const raw = lines[pc];
       const line = raw.trim();
+      if (line === "}" && endToStart.has(pc) && loopStack[loopStack.length - 1] === endToStart.get(pc)) { pc = endToStart.get(pc)!; continue; }
       if (!line || line.startsWith("#") || line === "{" || line === "}" || line === "int main() {") { pc++; continue; }
       if (line.startsWith("return")) {
         save(pc, "The return statement exits main().", "Return");
