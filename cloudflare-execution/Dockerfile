@@ -1,8 +1,7 @@
-# Keep the image on the same preview line as @cloudflare/sandbox@next.
-FROM docker.io/cloudflare/sandbox:next
+# Pin this image to the same release line as @cloudflare/sandbox.
+FROM docker.io/cloudflare/sandbox:1.0.0
 
-# GCC is used only inside the per-request Cloudflare sandbox container.
-# The container is destroyed after each request to prevent cross-run state.
+# GCC is used only inside a per-request, disposable Cloudflare container.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends gcc libc6-dev coreutils \
     && rm -rf /var/lib/apt/lists/*
