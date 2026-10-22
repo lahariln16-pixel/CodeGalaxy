@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1020">
+  <title>CodeGalaxy ISO Lab</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./"><span class="brand-mark">CG</span><span>CodeGalaxy <span class="muted">/ ISO Lab</span></span></a>
+    <span class="local-pill"><span class="dot"></span> Local-first</span>
+  </header>
+  <main class="shell">
+    <section class="hero">
+      <p class="eyebrow">LINUX IMAGE WORKBENCH</p>
+      <h1>Inspect it. <span>Then boot it.</span></h1>
+      <p class="hero-copy">Check a Linux ISO in your browser, calculate its SHA-256 checksum, inspect boot signatures, and try an experimental in-browser x86 emulator.</p>
+    </section>
+
+    <section class="panel upload-panel" aria-labelledby="upload-title">
+      <div class="section-heading">
+        <div><p class="eyebrow">STEP 01</p><h2 id="upload-title">Choose a Linux ISO</h2></div>
+        <span class="tag">.iso</span>
+      </div>
+      <label class="dropzone" id="dropzone" for="iso-file">
+        <span class="upload-icon" aria-hidden="true">↑</span>
+        <strong>Drop your ISO here</strong>
+        <span class="muted">or click to browse files on this device</span>
+        <span class="file-limit">The file stays in your browser; it is not uploaded to a server.</span>
+        <input id="iso-file" type="file" accept=".iso,application/x-iso9660-image,application/octet-stream">
+      </label>
+      <div id="file-summary" class="file-summary hidden"></div>
+      <div class="actions">
+        <button id="check-button" class="button primary" disabled>Analyze ISO</button>
+        <button id="clear-button" class="button secondary" disabled>Clear</button>
+      </div>
+      <p id="status" class="status" role="status">Choose an ISO to begin.</p>
+    </section>
+
+    <section id="results" class="panel hidden" aria-labelledby="results-title">
+      <div class="section-heading">
+        <div><p class="eyebrow">ANALYSIS</p><h2 id="results-title">Inspection report</h2></div>
+        <span id="result-badge" class="tag">Ready</span>
+      </div>
+      <div class="metrics">
+        <article class="metric"><span>File size</span><strong id="size-value">—</strong></article>
+        <article class="metric"><span>SHA-256</span><strong id="hash-value" class="hash">—</strong><button id="copy-hash" class="text-button" disabled>Copy hash</button></article>
+      </div>
+      <div id="checks" class="checks"></div>
+      <p class="notice">A valid-looking ISO and a checksum do not prove that an image is safe or authentic. Compare the SHA-256 value against the publisher's official checksum obtained from a trusted source.</p>
+    </section>
+
+    <section class="panel vm-panel" aria-labelledby="vm-title">
+      <div class="section-heading">
+        <div><p class="eyebrow">STEP 02 · EXPERIMENTAL</p><h2 id="vm-title">Browser VM</h2></div>
+        <span id="vm-badge" class="tag">Stopped</span>
+      </div>
+      <p class="muted vm-intro">The emulator runs on your device, not on Cloudflare. Compatibility and speed depend on your browser and ISO. Many modern Linux installers may not boot in a browser emulator.</p>
+      <div id="screen_container" class="screen-container">
+        <div class="screen-placeholder"><span class="terminal-icon">⌁_</span><strong>Your virtual display appears here</strong><span>Analyze an ISO, then start the experimental emulator.</span></div>
+      </div>
+      <div class="actions">
+        <button id="boot-button" class="button primary" disabled>Boot selected ISO</button>
+        <button id="stop-button" class="button secondary" disabled>Stop VM</button>
+      </div>
+      <p id="vm-status" class="status" role="status">Select and analyze an ISO first.</p>
+      <p class="notice warning">Only boot images you trust. Emulation is not a malware-analysis sandbox, and this browser emulator is not a full replacement for QEMU/KVM.</p>
+    </section>
+    <footer><span>CodeGalaxy ISO Lab</span><span>Client-side prototype · No file uploads</span></footer>
+  </main>
+  <script src="./app.js" defer></script>
+</body>
+</html>
